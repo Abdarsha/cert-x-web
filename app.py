@@ -158,9 +158,10 @@ def check():
     with ThreadPoolExecutor(max_workers=min(8, len(sites))) as ex:
         list(ex.map(work, list(enumerate(sites))))
 
-    summary = {"total": len(results), "green": 0, "yellow": 0, "red": 0}
+    summary = {"total": len(results), "green": 0, "yellow": 0, "urgent": 0, "expired": 0}
     for r in results:
-        summary[r.get("_level", "red")] = summary.get(r.get("_level", "red"), 0) + 1
+        b = r.get("_bucket", "expired")
+        summary[b] = summary.get(b, 0) + 1
     return jsonify({"results": results, "summary": summary})
 
 

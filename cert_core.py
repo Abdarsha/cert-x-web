@@ -12,6 +12,7 @@ import os
 import sys
 import base64
 import json
+import subprocess
 import tempfile
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -39,40 +40,6 @@ def parse_cert_time(value):
     return datetime.strptime(value, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
 
 
-def evaluate(days_left):
-    active = "Valid" if days_left >= 0 else "Invalid"
-    filt = "<= 90 days" if days_left <= 90 else "> 90 days"
-    if days_left < 0:
-        action, level = "\U0001F4E2 Expired", "red"
-    elif days_left == 0:
-        action, level = "\U0001F4E2 Expiring today", "red"
-    elif 1 <= days_left <= 45:
-        action, level = "\u26A0\uFE0F Immediate Action required \u2013 Expiring soon", "red"
-    elif 46 <= days_left <= 90:
-        action, level = "\u26A0\uFE0F Action required \u2013 Expiring soon", "yellow"
-    else:
-        action, level = "\u2705 More than 90 days to renew", "green"
-    return {"active": active, "filter": filt, "action": action, "level": level}
-
-
-
-
-def normalize_host(value):
-    v = str(value).strip()
-    if not v:
-        return None
-    host = v
-    if "://" in v:
-        host = urlparse(v).hostname or v
-    host = host.strip().strip("/").split("/")[0]
-    return host or None
-
-
-def parse_cert_time(value):
-    return datetime.strptime(value, "%b %d %H:%M:%S %Y %Z").replace(tzinfo=timezone.utc)
-
-
-# ---- status engine (CERT-X 5-tier logic) ----
 def evaluate(days_left):
     active = "Valid" if days_left >= 0 else "Invalid"
     filt = "<= 90 days" if days_left <= 90 else "> 90 days"
@@ -170,7 +137,6 @@ def _friendly_network_error(exc, host, proxy=None):
                          "Verify the corporate proxy settings." if proxy else
                          "Connection refused. Check VPN/network access.")
     return prefix + msg
-
 
 
 def _find_browser_exe():
@@ -567,8 +533,6 @@ def check_one(host, proxy=None):
         raise RuntimeError("\n".join(errors)) from e
 
 
-
-
 def classify_site(host):
     """High-level: fetch cert for host, return a result dict for reports."""
     today = datetime.now(timezone.utc).date()
@@ -581,6 +545,14 @@ def classify_site(host):
         issuer = dict(x[0] for x in cert.get("issuer", [])) if cert.get("issuer") else {}
         days_left = (not_after.date() - today).days
         ev = evaluate(days_left)
+        if ev["level"] == "green":
+            bucket = "green"
+        elif ev["level"] == "yellow":
+            bucket = "yellow"
+        elif days_left <= 0:
+            bucket = "expired"
+        else:
+            bucket = "urgent"
         return {
             "Website": host,
             "Expiry Date": not_after.strftime("%m/%d/%Y"),
@@ -592,11 +564,13 @@ def classify_site(host):
             "Issued On": not_before.strftime("%m/%d/%Y"),
             "Error": "",
             "_level": ev["level"],
+            "_bucket": bucket,
         }
     except Exception as e:
         return {
             "Website": host, "Expiry Date": "", "Days Left": "",
             "Active Status": "Invalid", "Filter": "",
-            "Action Status": "\U0001F4E2 Could not read certificate",
+            "Action Status": "\U0001F4E2 Expired",
             "Issuer": "", "Issued On": "", "Error": str(e), "_level": "red",
+            "_bucket": "expired",
         }
