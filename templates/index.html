@@ -16,7 +16,7 @@
   .title{display:flex;align-items:center;gap:10px;font-size:26px;font-weight:700}
   .acro{margin-top:4px;font-size:14px}.acro b{color:var(--accent)}.acro span{color:var(--muted)}
   .desc{color:var(--muted);font-size:13px;margin-top:6px}
-  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:20px 0}
+  .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin:20px 0}
   .cardx{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px}
   .cardx .lab{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.04em}
   .cardx .val{font-size:28px;font-weight:700;margin-top:2px}
@@ -39,6 +39,8 @@
   td{padding:9px 10px;border-top:1px solid #223049}
   tr:nth-child(even) td{background:var(--rowb)}
   .lv-green{color:var(--green)} .lv-yellow{color:var(--amber)} .lv-red{color:var(--red)}
+  tr.row-expired td{background:#991B1B!important;color:#fff!important}
+  tr.row-expired td.lv-red{color:#fff!important}
   .bar{height:6px;background:var(--head);border-radius:4px;overflow:hidden;margin:10px 0;display:none}
   .bar > div{height:100%;width:40%;background:var(--accent);animation:ind 1.1s infinite}
   @keyframes ind{0%{margin-left:-40%}100%{margin-left:100%}}
@@ -56,7 +58,8 @@
     <div class="cardx"><div class="lab">TOTAL</div><div class="val" id="c_total">0</div></div>
     <div class="cardx"><div class="lab">OK (&gt;90d)</div><div class="val lv-green" id="c_green">0</div></div>
     <div class="cardx"><div class="lab">ACTION (46-90d)</div><div class="val lv-yellow" id="c_yellow">0</div></div>
-    <div class="cardx"><div class="lab">URGENT / EXPIRED</div><div class="val lv-red" id="c_red">0</div></div>
+    <div class="cardx"><div class="lab">URGENT (1-45d)</div><div class="val lv-red" id="c_urgent">0</div></div>
+    <div class="cardx"><div class="lab">EXPIRED</div><div class="val lv-red" id="c_expired">0</div></div>
   </div>
 
   <div class="panel">
@@ -91,7 +94,7 @@
     ✅ <b>More than 90 days to renew</b> (green) &nbsp;·&nbsp;
     ⚠️ <b>Action required</b> 46–90 days (yellow) &nbsp;·&nbsp;
     ⚠️ <b>Immediate Action required</b> 1–45 days (red) &nbsp;·&nbsp;
-    📢 <b>Expiring today</b> / <b>Expired</b> (red)
+    📢 <b>Expiring today</b> / <b>Expired</b> (maroon)
   </div>
 </div>
 
@@ -116,7 +119,8 @@ $('run').onclick = async () => {
     renderRows(data.results);
     const s = data.summary;
     $('c_total').textContent = s.total; $('c_green').textContent = s.green;
-    $('c_yellow').textContent = s.yellow; $('c_red').textContent = s.red;
+    $('c_yellow').textContent = s.yellow;
+    $('c_urgent').textContent = s.urgent; $('c_expired').textContent = s.expired;
     $('status').textContent = 'Done. Checked ' + s.total + ' site(s). Click “Save Report” to export.';
     $('save').disabled = false;
   } catch (e) {
@@ -132,9 +136,10 @@ function renderRows(results){
   results.forEach(r => {
     const tr = document.createElement('tr');
     const lv = 'lv-' + (r._level || 'red');
+    if ((r._bucket || '') === 'expired') tr.className = 'row-expired';
     tr.innerHTML =
       '<td>'+esc(r.Website)+'</td>'+
-      '<td class="'+lv+'">'+esc(r['Expiry Date']||'(could not read)')+'</td>'+
+      '<td class="'+lv+'">'+esc(r['Expiry Date']||'')+'</td>'+
       '<td class="'+lv+'" style="text-align:center">'+esc(String(r['Days Left']))+'</td>'+
       '<td class="'+lv+'" style="text-align:center">'+esc(r['Active Status'])+'</td>'+
       '<td style="text-align:center">'+esc(r['Filter'])+'</td>'+
