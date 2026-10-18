@@ -185,6 +185,77 @@ def report():
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+@app.route("/api/check", methods=["GET", "POST"])
+def api_check():
+    """JSON API endpoint.
+
+    POST  body: {"sites": ["google.com", "awards.mileageplus.com"]}
+          (also accepts a plain list, or {"sites": "a.com\nb.com"} as text)
+    GET   query: /api/check?site=google.com&site=amazon.com
+                 or /api/check?sites=google.com,amazon.com
+
+    Returns JSON:
+      {"results": [ {website, expiry_date, days_left, active_status,
+                     filter, action_status, issuer, issued_on, level,
+                     bucket, error}, ... ],
+       "summary": {total, green, yellow, urgent, expired}}
+    """
+    raw_sites = []
+    if request.method == "POST":
+        data = request.get_json(silent=True)
+        if isinstance(data, list):
+            raw_sites = data
+        elif isinstance(data, dict):
+            s = data.get("sites", [])
+            if isinstance(s, str):
+                raw_sites = s.replace(",", "\n").splitlines()
+            elif isinstance(s, list):
+                raw_sites = s
+    else:  # GET
+        qs = request.args.getlist("site")
+        if not qs:
+            joined = request.args.get("sites", "")
+            qs = joined.replace(",", "\n").splitlines()
+        raw_sites = qs
+
+    # normalize + de-dup
+    sites, seen = [], set()
+    for item in raw_sites:
+        h = cert_core.normalize_host(item)
+        if h and h not in seen:
+            seen.add(h); sites.append(h)
+    if not sites:
+        return jsonify({"error": "No websites provided. Send {\"sites\": [...]} "
+                                 "or ?site=example.com"}), 400
+
+    results = [None] * len(sites)
+    def work(ih):
+        i, host = ih
+        results[i] = cert_core.classify_site(host)
+    with ThreadPoolExecutor(max_workers=min(8, len(sites))) as ex:
+        list(ex.map(work, list(enumerate(sites))))
+
+    summary = {"total": len(results), "green": 0, "yellow": 0, "urgent": 0, "expired": 0}
+    api_results = []
+    for r in results:
+        b = r.get("_bucket", "expired")
+        summary[b] = summary.get(b, 0) + 1
+        api_results.append({
+            "website": r.get("Website", ""),
+            "expiry_date": r.get("Expiry Date", ""),
+            "days_left": r.get("Days Left", ""),
+            "active_status": r.get("Active Status", ""),
+            "filter": r.get("Filter", ""),
+            "action_status": r.get("Action Status", ""),
+            "issuer": r.get("Issuer", ""),
+            "issued_on": r.get("Issued On", ""),
+            "level": r.get("_level", ""),
+            "bucket": b,
+            "error": r.get("Error", ""),
+        })
+    return jsonify({"results": api_results, "summary": summary})
+
+
 @app.route("/health")
 def health():
     return {"status": "ok"}
